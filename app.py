@@ -5,7 +5,7 @@ if not os.path.exists("models/similarity.pkl") or \
     with st.spinner("⏳ Building model — first time only, ~60 seconds..."):
         subprocess.run([sys.executable, "model_builder.py"], check=True)
     st.rerun()
-      
+  
 import os, pickle, ast, requests
 import streamlit as st
 import pandas as pd
@@ -413,11 +413,14 @@ def recommend(movie, n=10): # type: ignore
 for k, v in [("recs",[]),("searched_for",None), ("logged_in", False), ("users_db", {"admin@cinematrix.com": "password"}), ("search_history", []), ("user_profile", {"name": "", "genres": []}), ("show_account", False)]:
     if k not in st.session_state: st.session_state[k] = v
 
-has_google_creds = os.path.exists('credentials.json')
+creds_path = os.path.join(BASE_DIR, '.vscode', 'credentials.json')
+if not os.path.exists(creds_path):
+    creds_path = os.path.join(BASE_DIR, 'credentials.json')
+has_google_creds = os.path.exists(creds_path)
 
 if has_google_creds:
     authenticator = Authenticate(
-        secret_credentials_path='credentials.json',
+        secret_credentials_path=creds_path,
         cookie_name='cinematrix_cookie',
         cookie_key='this_is_secret',
         redirect_uri='http://localhost:8501',
@@ -1430,11 +1433,14 @@ def recommend(movie, n=10):
 for k, v in [("recs",[]),("searched_for",None), ("logged_in", False), ("users_db", {"admin@cinematrix.com": "password"}), ("search_history", []), ("user_profile", {"name": "", "genres": []}), ("show_account", False)]:
     if k not in st.session_state: st.session_state[k] = v
 
-has_google_creds = os.path.exists('credentials.json')
+creds_path = os.path.join(BASE_DIR, '.vscode', 'credentials.json')
+if not os.path.exists(creds_path):
+    creds_path = os.path.join(BASE_DIR, 'credentials.json')
+has_google_creds = os.path.exists(creds_path)
 
 if has_google_creds:
     authenticator = Authenticate(
-        secret_credentials_path='credentials.json',
+        secret_credentials_path=creds_path,
         cookie_name='cinematrix_cookie',
         cookie_key='this_is_secret',
         redirect_uri='http://localhost:8501',
