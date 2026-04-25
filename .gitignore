@@ -1,0 +1,3 @@
+credentials.json
+.env
+models/poster_cache.pkl

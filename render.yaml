@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: cinematch-ai
+    runtime: python
+    buildCommand: "pip install -r requirements.txt && python model_builder.py"
+    startCommand: "streamlit run app.py --server.port $PORT --server.address 0.0.0.0"
+    envVars:
+      - key: TMDB_API_KEY
+        value: cdf3a58aa720377a583f33c3e879377c
+      - key: PYTHON_VERSION
+        value: 3.11.0
