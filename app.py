@@ -432,7 +432,8 @@ if has_google_creds:
     except Exception as e:
         if hasattr(st, "query_params"):
             st.query_params.clear()
-        st.error("⚠️ Google Login session expired or failed. Please try logging in again.")
+        print(f"Google Auth Error: {e}")
+        st.error(f"⚠️ Google Login failed. Details: {e}")
         
     if st.session_state.get('connected'):
         st.session_state.logged_in = True
@@ -1468,7 +1469,8 @@ if has_google_creds:
     except Exception as e:
         if hasattr(st, "query_params"):
             st.query_params.clear()
-        st.error("⚠️ Google Login session expired or failed. Please try logging in again.")
+        print(f"Google Auth Error: {e}")
+        st.error(f"⚠️ Google Login failed. Details: {e}")
         
     if st.session_state.get('connected'):
         st.session_state.logged_in = True
