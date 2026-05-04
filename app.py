@@ -419,11 +419,12 @@ if not os.path.exists(creds_path):
 has_google_creds = os.path.exists(creds_path)
 
 if has_google_creds:
+    app_redirect_uri = os.environ.get('REDIRECT_URI', 'http://localhost:8501')
     authenticator = Authenticate(
         secret_credentials_path=creds_path,
         cookie_name='cinematrix_cookie',
         cookie_key='this_is_secret',
-        redirect_uri='http://localhost:8501',
+        redirect_uri=app_redirect_uri,
     )
 
     try:
