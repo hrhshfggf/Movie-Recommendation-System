@@ -10,6 +10,7 @@ import os, pickle, ast, requests
 import streamlit as st
 import pandas as pd
 from dotenv import load_dotenv
+from streamlit_google_auth import Authenticate
 
 load_dotenv()
 
@@ -412,6 +413,30 @@ def recommend(movie, n=10): # type: ignore
 for k, v in [("recs",[]),("searched_for",None), ("logged_in", False), ("users_db", {"admin@cinematrix.com": "password"}), ("search_history", []), ("user_profile", {"name": "", "genres": []}), ("show_account", False)]:
     if k not in st.session_state: st.session_state[k] = v
 
+creds_path = os.path.join(BASE_DIR, '.vscode', 'credentials.json')
+if not os.path.exists(creds_path):
+    creds_path = os.path.join(BASE_DIR, 'credentials.json')
+has_google_creds = os.path.exists(creds_path)
+
+if has_google_creds:
+    app_redirect_uri = os.environ.get('REDIRECT_URI', 'http://localhost:8501')
+    authenticator = Authenticate(
+        secret_credentials_path=creds_path,
+        cookie_name='cinematrix_cookie',
+        cookie_key='this_is_secret',
+        redirect_uri=app_redirect_uri,
+    )
+
+    try:
+        authenticator.check_authentification()
+    except Exception as e:
+        if hasattr(st, "query_params"):
+            st.query_params.clear()
+        st.error("⚠️ Google Login session expired or failed. Please try logging in again.")
+        
+    if st.session_state.get('connected'):
+        st.session_state.logged_in = True
+
 if not st.session_state.logged_in:
     st.markdown("""
     <div style="text-align:center; padding: 4rem 0;">
@@ -434,6 +459,13 @@ if not st.session_state.logged_in:
                     st.rerun()
                 else:
                     st.error("Invalid email or password.")
+            
+            st.markdown("<div style='text-align: center; margin: 1rem 0; color: var(--muted); font-size: 0.85rem;'>OR</div>", unsafe_allow_html=True)
+            
+            if has_google_creds:
+                authenticator.login() # type: ignore
+            else:
+                st.warning("⚠️ Google Sign-In is disabled. Missing 'credentials.json'.")
                 
         with tab_signup:
             new_email = st.text_input("Email", key="signup_email")
@@ -487,6 +519,9 @@ with col_logout:
     if st.button("Log Out", use_container_width=True):
         st.session_state.logged_in = False
         st.session_state.connected = False
+        if has_google_creds and 'authenticator' in globals():
+            try: authenticator.logout() # type: ignore
+            except: pass
         st.rerun()
 
 if st.session_state.show_account:
@@ -1414,6 +1449,30 @@ def recommend(movie, n=10):
 for k, v in [("recs",[]),("searched_for",None), ("logged_in", False), ("users_db", {"admin@cinematrix.com": "password"}), ("search_history", []), ("user_profile", {"name": "", "genres": []}), ("show_account", False)]:
     if k not in st.session_state: st.session_state[k] = v
 
+creds_path = os.path.join(BASE_DIR, '.vscode', 'credentials.json')
+if not os.path.exists(creds_path):
+    creds_path = os.path.join(BASE_DIR, 'credentials.json')
+has_google_creds = os.path.exists(creds_path)
+
+if has_google_creds:
+    app_redirect_uri = os.environ.get('REDIRECT_URI', 'http://localhost:8501')
+    authenticator = Authenticate(
+        secret_credentials_path=creds_path,
+        cookie_name='cinematrix_cookie',
+        cookie_key='this_is_secret',
+        redirect_uri=app_redirect_uri,
+    )
+
+    try:
+        authenticator.check_authentification()
+    except Exception as e:
+        if hasattr(st, "query_params"):
+            st.query_params.clear()
+        st.error("⚠️ Google Login session expired or failed. Please try logging in again.")
+        
+    if st.session_state.get('connected'):
+        st.session_state.logged_in = True
+
 if not st.session_state.logged_in:
     st.markdown("""
     <div style="text-align:center; padding: 4rem 0;">
@@ -1436,6 +1495,13 @@ if not st.session_state.logged_in:
                     st.rerun()
                 else:
                     st.error("Invalid email or password.")
+            
+            st.markdown("<div style='text-align: center; margin: 1rem 0; color: var(--muted); font-size: 0.85rem;'>OR</div>", unsafe_allow_html=True)
+            
+            if has_google_creds:
+                authenticator.login() # type: ignore
+            else:
+                st.warning("⚠️ Google Sign-In is disabled. Missing 'credentials.json'.")
                 
         with tab_signup:
             new_email = st.text_input("Email", key="signup_email")
@@ -1489,6 +1555,9 @@ with col_logout:
     if st.button("Log Out", use_container_width=True):
         st.session_state.logged_in = False
         st.session_state.connected = False
+        if has_google_creds and 'authenticator' in globals():
+            try: authenticator.logout() # type: ignore
+            except: pass
         st.rerun()
 
 if st.session_state.show_account:
