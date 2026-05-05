@@ -23,12 +23,11 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO  = "https://www.googleapis.com/oauth2/v3/userinfo"
 
 def make_google_auth_url() -> str:
-    # ── FIX: We do NOT store state in session_state because Streamlit
-    #         creates a BRAND NEW session when Google redirects back,
-    #         meaning session_state["oauth_state"] is always gone.
-    #         Solution: use a fixed state token derived from client_id
-    #         so it survives across the redirect without needing session.
-    state = "cinematrix_oauth_ok"   # fixed token — safe for single-server local use
+    # FIXED: Use a fixed state string instead of a random one stored in
+    # session_state. When Google redirects back to localhost:8501, Streamlit
+    # creates a BRAND NEW session — the old session_state["oauth_state"] is
+    # completely gone. A fixed known string survives this redirect perfectly.
+    state = "cinematrix_oauth_ok"
     params = {
         "client_id":     GOOGLE_CLIENT_ID,
         "redirect_uri":  GOOGLE_REDIRECT_URI,
@@ -465,16 +464,11 @@ if not st.session_state.logged_in:
     qp = st.query_params
     oauth_code  = qp.get("code")
     oauth_state = qp.get("state")
-
     if oauth_code:
-        # ── FIX: The original code checked oauth_state against
-        #         st.session_state["oauth_state"] — but Google's redirect
-        #         creates a BRAND NEW Streamlit session, so session_state
-        #         is always empty and the check ALWAYS fails with
-        #         "OAuth state mismatch".
-        #
-        #         Fix: check against our fixed state string instead.
-        #         This is safe for a single-user local/Render deployment.
+        # FIXED: was checking oauth_state == st.session_state.get("oauth_state")
+        # That ALWAYS fails because Google's redirect creates a brand new
+        # Streamlit session — session_state is empty on return.
+        # Now we check against the fixed string set in make_google_auth_url().
         if oauth_state == "cinematrix_oauth_ok":
             with st.spinner("🔐 Signing you in with Google…"):
                 user_info = exchange_code_for_user(oauth_code)
@@ -488,10 +482,10 @@ if not st.session_state.logged_in:
                 st.query_params.clear()
                 st.rerun()
             else:
-                st.error("❌ Google sign-in failed. Please check your Client ID / Secret in .env and try again.")
+                st.error("❌ Google sign-in failed. Check your GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env")
                 st.query_params.clear()
         else:
-            # Unexpected state — clear and let the user try again
+            # Unknown state — clear params and reload cleanly
             st.query_params.clear()
             st.rerun()
     # ─────────────────────────────────────────────────────────────────────────
