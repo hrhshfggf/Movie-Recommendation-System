@@ -13,7 +13,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Google OAuth ─────────────────────────────────────────────────────────────
 GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_REDIRECT_URI  = os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:8501")
@@ -54,7 +53,6 @@ def exchange_code_for_user(code: str):
         return info   # keys: sub, email, name, picture
     except Exception:
         return None
-# ─────────────────────────────────────────────────────────────────────────────
 
 st.set_page_config(
     page_title="CineMatrix",
@@ -454,7 +452,6 @@ for k, v in [("recs",[]),("searched_for",None), ("logged_in", False), ("users_db
     if k not in st.session_state: st.session_state[k] = v
 
 if not st.session_state.logged_in:
-    # ── Handle Google OAuth callback ─────────────────────────────────────────
     qp = st.query_params
     oauth_code  = qp.get("code")
     oauth_state = qp.get("state")
@@ -477,7 +474,6 @@ if not st.session_state.logged_in:
         else:
             st.query_params.clear()
             st.rerun()
-    # ─────────────────────────────────────────────────────────────────────────
 
     st.markdown("""
     <div style="text-align:center; padding: 4rem 0;">
@@ -517,7 +513,6 @@ if not st.session_state.logged_in:
                     st.session_state.users_db[new_email] = new_password
                     st.success("Account created successfully! You can now log in.")
 
-        # ── Google Sign-In button BELOW the tabs ──────────────────────────────
         google_configured = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
         if google_configured:
             google_url = make_google_auth_url()
@@ -548,7 +543,6 @@ if not st.session_state.logged_in:
             """, unsafe_allow_html=True)
         else:
             st.info("💡 Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in your `.env` to enable Google Sign-In.", icon="ℹ️")
-        # ─────────────────────────────────────────────────────────────────────
 
     st.stop()
 
