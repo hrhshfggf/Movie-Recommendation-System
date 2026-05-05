@@ -1,61 +1,10 @@
-import os, subprocess, sys, streamlit as st
-
-if not os.path.exists("models/similarity.pkl") or \
-   not os.path.exists("models/movie_dict.pkl"):
-    with st.spinner("⏳ Building model — first time only, ~60 seconds..."):
-        subprocess.run([sys.executable, "model_builder.py"], check=True)
-    st.rerun()
-  
-import os, pickle, ast, requests, urllib.parse, secrets
+import os, pickle, ast, requests
 import streamlit as st
 import pandas as pd
 from dotenv import load_dotenv
+from streamlit_google_auth import Authenticate
 
 load_dotenv()
-
-# ── Google OAuth ─────────────────────────────────────────────────────────────
-GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
-GOOGLE_REDIRECT_URI  = os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:8501")
-
-GOOGLE_AUTH_URL  = "https://accounts.google.com/o/oauth2/v2/auth"
-GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-GOOGLE_USERINFO  = "https://www.googleapis.com/oauth2/v3/userinfo"
-
-def make_google_auth_url() -> str:
-    state = secrets.token_urlsafe(16)
-    st.session_state["oauth_state"] = state
-    params = {
-        "client_id":     GOOGLE_CLIENT_ID,
-        "redirect_uri":  GOOGLE_REDIRECT_URI,
-        "response_type": "code",
-        "scope":         "openid email profile",
-        "state":         state,
-        "prompt":        "select_account",
-    }
-    return GOOGLE_AUTH_URL + "?" + urllib.parse.urlencode(params)
-
-def exchange_code_for_user(code: str):
-    """Exchange auth code → access token → user-info dict."""
-    try:
-        r = requests.post(GOOGLE_TOKEN_URL, data={
-            "code":          code,
-            "client_id":     GOOGLE_CLIENT_ID,
-            "client_secret": GOOGLE_CLIENT_SECRET,
-            "redirect_uri":  GOOGLE_REDIRECT_URI,
-            "grant_type":    "authorization_code",
-        }, timeout=10)
-        r.raise_for_status()
-        token = r.json().get("access_token")
-        if not token:
-            return None
-        info = requests.get(GOOGLE_USERINFO,
-                            headers={"Authorization": f"Bearer {token}"},
-                            timeout=8).json()
-        return info   # keys: sub, email, name, picture
-    except Exception:
-        return None
-# ─────────────────────────────────────────────────────────────────────────────
 
 st.set_page_config(
     page_title="CineMatrix",
@@ -456,32 +405,27 @@ def recommend(movie, n=10): # type: ignore
 for k, v in [("recs",[]),("searched_for",None), ("logged_in", False), ("users_db", {"admin@cinematrix.com": "password"}), ("search_history", []), ("user_profile", {"name": "", "genres": []}), ("show_account", False)]:
     if k not in st.session_state: st.session_state[k] = v
 
-if not st.session_state.logged_in:
-    # ── Handle Google OAuth callback ─────────────────────────────────────────
-    qp = st.query_params
-    oauth_code  = qp.get("code")
-    oauth_state = qp.get("state")
-    if oauth_code:
-        if oauth_state and oauth_state == st.session_state.get("oauth_state"):
-            with st.spinner("🔐 Signing you in with Google…"):
-                user_info = exchange_code_for_user(oauth_code)
-            if user_info and user_info.get("email"):
-                st.session_state.logged_in = True
-                if not st.session_state.user_profile.get("name"):
-                    st.session_state.user_profile["name"] = user_info.get("name", "")
-                email_key = user_info["email"]
-                if email_key not in st.session_state.users_db:
-                    st.session_state.users_db[email_key] = "__google_oauth__"
-                st.query_params.clear()
-                st.rerun()
-            else:
-                st.error("Google sign-in failed. Please try again.")
-                st.query_params.clear()
-        else:
-            st.error("OAuth state mismatch — possible CSRF. Please try again.")
-            st.query_params.clear()
-    # ─────────────────────────────────────────────────────────────────────────
+has_google_creds = os.path.exists('credentials.json')
 
+if has_google_creds:
+    authenticator = Authenticate(
+        secret_credentials_path='credentials.json',
+        cookie_name='cinematrix_cookie',
+        cookie_key='this_is_secret',
+        redirect_uri='http://localhost:8501',
+    )
+
+    try:
+        authenticator.check_authentification()
+    except Exception as e:
+        if hasattr(st, "query_params"):
+            st.query_params.clear()
+        st.error("⚠️ Google Login session expired or failed. Please try logging in again.")
+        
+    if st.session_state.get('connected'):
+        st.session_state.logged_in = True
+
+if not st.session_state.logged_in:
     st.markdown("""
     <div style="text-align:center; padding: 4rem 0;">
       <div style="font-size:3.5rem; margin-bottom:1rem">🎬</div>
@@ -489,11 +433,11 @@ if not st.session_state.logged_in:
       <div style="font-size:1rem; color:#6b7194; margin-bottom:2rem">Please log in to continue</div>
     </div>
     """, unsafe_allow_html=True)
-
+    
     col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
         tab_login, tab_signup = st.tabs(["Log In", "Create Account"])
-
+        
         with tab_login:
             email = st.text_input("Email", key="login_email")
             password = st.text_input("Password", type="password", key="login_pass")
@@ -503,43 +447,14 @@ if not st.session_state.logged_in:
                     st.rerun()
                 else:
                     st.error("Invalid email or password.")
-
-            # ── Google Sign-In button (below Log In) ──────────────────────────
-            st.markdown("""
-            <div style="display:flex;align-items:center;gap:8px;margin:0.75rem 0 0.6rem">
-              <div style="flex:1;height:1px;background:#2a2a50"></div>
-              <span style="color:#6b7194;font-size:0.75rem">or</span>
-              <div style="flex:1;height:1px;background:#2a2a50"></div>
-            </div>
-            """, unsafe_allow_html=True)
-            google_configured = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
-            if google_configured:
-                google_url = make_google_auth_url()
-                st.markdown(f"""
-                <a href="{google_url}" style="text-decoration:none; display:block;">
-                  <div style="
-                    display:flex; align-items:center; justify-content:center; gap:12px;
-                    background:#fff; color:#3c4043;
-                    border:1px solid #dadce0; border-radius:10px;
-                    padding:0.65rem 1.4rem; font-family:'Poppins',sans-serif;
-                    font-size:0.92rem; font-weight:600; cursor:pointer;
-                    box-shadow:0 1px 4px rgba(0,0,0,0.18);
-                    transition: box-shadow 0.2s;">
-                    <svg width="20" height="20" viewBox="0 0 48 48">
-                      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-                      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-                      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-                      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-                      <path fill="none" d="M0 0h48v48H0z"/>
-                    </svg>
-                    Sign in with Google
-                  </div>
-                </a>
-                """, unsafe_allow_html=True)
+            
+            st.markdown("<div style='text-align: center; margin: 1rem 0; color: var(--muted); font-size: 0.85rem;'>OR</div>", unsafe_allow_html=True)
+            
+            if has_google_creds:
+                authenticator.login() # type: ignore
             else:
-                st.info("💡 Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in your `.env` to enable Google Sign-In.", icon="ℹ️")
-            # ──────────────────────────────────────────────────────────────────
-
+                st.warning("⚠️ Google Sign-In is disabled. Missing 'credentials.json'.")
+                
         with tab_signup:
             new_email = st.text_input("Email", key="signup_email")
             new_password = st.text_input("Password", type="password", key="signup_pass")
@@ -554,9 +469,8 @@ if not st.session_state.logged_in:
                 else:
                     st.session_state.users_db[new_email] = new_password
                     st.success("Account created successfully! You can now log in.")
-
+                    
     st.stop()
-
 
 st.markdown(f"""
 <div class="navbar">
@@ -593,6 +507,9 @@ with col_logout:
     if st.button("Log Out", use_container_width=True):
         st.session_state.logged_in = False
         st.session_state.connected = False
+        if has_google_creds and 'authenticator' in globals():
+            try: authenticator.logout() # type: ignore
+            except: pass
         st.rerun()
 
 if st.session_state.show_account:
@@ -781,32 +698,7 @@ with tab_analytics:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         return df
 
-    df_raw_full = load_raw_for_charts_v2()
-
-    st.markdown("""
-    <div class="sec-head" style="margin-top:0;">
-      <div class="sec-head-bar"></div>
-      <div class="sec-head-title">🎛️ Interactive Dashboard Filters</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    fc1, fc2 = st.columns(2)
-    with fc1:
-        rating_range = st.slider("⭐ Select IMDb Rating Range", 
-                                 min_value=0.0, max_value=10.0, value=(0.0, 10.0), step=0.5)
-    with fc2:
-        min_year = int(df_raw_full['year'].min(skipna=True))
-        max_year = int(df_raw_full['year'].max(skipna=True))
-        year_range = st.slider("📅 Select Release Year Range", 
-                               min_value=min_year, max_value=max_year, value=(min_year, max_year))
-
-    # Dynamically filter the entire dashboard data
-    df_raw = df_raw_full[
-        (df_raw_full['vote_average'] >= rating_range[0]) & 
-        (df_raw_full['vote_average'] <= rating_range[1]) &
-        (df_raw_full['year'] >= year_range[0]) &
-        (df_raw_full['year'] <= year_range[1])
-    ]
+    df_raw = load_raw_for_charts_v2()
 
     k1, k2, k3, k4, k5 = st.columns(5)
     kpi_style = "background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:.9rem 1rem;text-align:center"
@@ -814,18 +706,16 @@ with tab_analytics:
     kpi_lbl   = "font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-top:2px"
 
     k1.markdown(f'<div style="{kpi_style}"><div style="{kpi_val}">{len(df_raw):,}</div><div style="{kpi_lbl}">Total Movies</div></div>', unsafe_allow_html=True)
-    avg_rating = df_raw["vote_average"].mean() if not df_raw.empty else 0
-    k2.markdown(f'<div style="{kpi_style}"><div style="{kpi_val}">{avg_rating:.1f}</div><div style="{kpi_lbl}">Avg Rating</div></div>', unsafe_allow_html=True)
-    med_runtime = df_raw["runtime"].median() if not df_raw.empty else 0
-    k3.markdown(f'<div style="{kpi_style}"><div style="{kpi_val}">{int(med_runtime)}m</div><div style="{kpi_lbl}">Median Runtime</div></div>', unsafe_allow_html=True)
-    lat_year = df_raw["year"].max() if not df_raw.empty else 0
-    k4.markdown(f'<div style="{kpi_style}"><div style="{kpi_val}">{int(lat_year)}</div><div style="{kpi_lbl}">Latest Year</div></div>', unsafe_allow_html=True)
-    tot_votes = df_raw["vote_count"].sum() // 1_000_000 if not df_raw.empty else 0
-    k5.markdown(f'<div style="{kpi_style}"><div style="{kpi_val}">{tot_votes:.0f}M</div><div style="{kpi_lbl}">Total Votes</div></div>', unsafe_allow_html=True)
+    k2.markdown(f'<div style="{kpi_style}"><div style="{kpi_val}">{df_raw["vote_average"].mean():.1f}</div><div style="{kpi_lbl}">Avg Rating</div></div>', unsafe_allow_html=True)
+    k3.markdown(f'<div style="{kpi_style}"><div style="{kpi_val}">{int(df_raw["runtime"].median())}m</div><div style="{kpi_lbl}">Median Runtime</div></div>', unsafe_allow_html=True)
+    k4.markdown(f'<div style="{kpi_style}"><div style="{kpi_val}">{int(df_raw["year"].max())}</div><div style="{kpi_lbl}">Latest Year</div></div>', unsafe_allow_html=True)
+    k5.markdown(f'<div style="{kpi_style}"><div style="{kpi_val}">{df_raw["vote_count"].sum()//1_000_000:.0f}M</div><div style="{kpi_lbl}">Total Votes</div></div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    def get_genre_counts_from_df(df):
+    @st.cache_data
+    def get_genre_counts(csv_path):
+        df = pd.read_csv(csv_path)
         gc = {}
         for raw in df['genres'].dropna():
             try:
@@ -835,8 +725,8 @@ with tab_analytics:
         return pd.DataFrame(sorted(gc.items(), key=lambda x: x[1], reverse=True),
                             columns=['Genre','Count'])
 
-    genre_df = get_genre_counts_from_df(df_raw)
-    top10_df = genre_df.head(10) if not genre_df.empty else pd.DataFrame(columns=['Genre','Count'])
+    genre_df = get_genre_counts(MOVIES_CSV)
+    top10_df = genre_df.head(10)
 
     col_a, col_b = st.columns([3, 2])
 
@@ -848,28 +738,39 @@ with tab_analytics:
         </div>
         """, unsafe_allow_html=True)
 
-        import plotly.express as px
-        
-        if not top10_df.empty:
-            fig1 = px.bar(
-                top10_df.sort_values('Count', ascending=True), 
-                x='Count', y='Genre', orientation='h',
-                text='Count',
-                color_discrete_sequence=['#7c3aed']
-            )
-            fig1.update_traces(textposition='outside')
-            fig1.update_layout(
-                template="plotly_dark",
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                margin=dict(l=0, r=0, t=30, b=0),
-                xaxis_title="Number of Movies",
-                yaxis_title=""
-            )
-            st.plotly_chart(fig1, use_container_width=True)
-            st.caption(f"📊 {top10_df.iloc[0]['Genre']} leads with {top10_df.iloc[0]['Count']:,} films")
-        else:
-            st.info("No data available for this filter.")
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+        import numpy as np
+
+        plt.style.use('dark_background')
+        fig, ax = plt.subplots(figsize=(8, 4.5))
+        fig.patch.set_facecolor('#14142a')
+        ax.set_facecolor('#0f0f1c')
+
+        bars = ax.barh(top10_df['Genre'][::-1], top10_df['Count'][::-1],
+                       color=['#7c3aed','#6d28d9','#5b21b6','#4c1d95',
+                              '#2563eb','#1d4ed8','#1e40af','#06b6d4',
+                              '#0891b2','#0e7490'],
+                       height=0.65, edgecolor='none')
+
+        for bar in bars:
+            w = bar.get_width()
+            ax.text(w + 8, bar.get_y() + bar.get_height()/2,
+                    f'{int(w):,}', va='center', ha='left',
+                    fontsize=9, color='#a78bfa', fontweight='bold')
+
+        ax.set_xlabel('Number of Movies', color='#6b7194', fontsize=9)
+        ax.tick_params(colors='#9090b8', labelsize=9)
+        ax.spines[:].set_visible(False)
+        ax.xaxis.grid(True, color='#1e1e38', linewidth=0.8)
+        ax.set_axisbelow(True)
+        ax.set_xlim(0, top10_df['Count'].max() * 1.15)
+        fig.tight_layout(pad=1.5)
+
+        st.pyplot(fig, use_container_width=True)
+        plt.close(fig)
+
+        st.caption("📊 Drama leads with 2,297 films — hover the chart in the interactive version on the Analytics tab")
 
     with col_b:
         st.markdown("""
@@ -879,28 +780,29 @@ with tab_analytics:
         </div>
         """, unsafe_allow_html=True)
 
-        if not df_raw.empty:
-            fig2 = px.histogram(
-                df_raw.dropna(subset=['vote_average']), x='vote_average', nbins=20,
-                color_discrete_sequence=['#7c3aed']
-            )
-            mean_val = df_raw['vote_average'].mean()
-            fig2.add_vline(
-                x=mean_val, 
-                line_dash="dash", line_color="#f59e0b",
-                annotation_text=f"Mean: {mean_val:.1f}"
-            )
-            fig2.update_layout(
-                template="plotly_dark",
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                margin=dict(l=0, r=0, t=30, b=0),
-                xaxis_title="IMDb Rating",
-                yaxis_title="Movie Count"
-            )
-            st.plotly_chart(fig2, use_container_width=True)
-        else:
-            st.info("No data available for this filter.")
+        fig2, ax2 = plt.subplots(figsize=(5, 4.5))
+        fig2.patch.set_facecolor('#14142a')
+        ax2.set_facecolor('#0f0f1c')
+
+        n, bins, patches = ax2.hist(df_raw['vote_average'].dropna(), bins=20,
+                                     edgecolor='none', color='#7c3aed')
+        cmap = plt.cm.get_cmap('plasma')
+        for i, patch in enumerate(patches): # type: ignore
+            patch.set_facecolor(cmap(i / len(patches))) # type: ignore
+
+        ax2.axvline(df_raw['vote_average'].mean(), color='#f59e0b', linewidth=1.5,
+                    linestyle='--', label=f"Mean {df_raw['vote_average'].mean():.1f}")
+        ax2.legend(fontsize=8, facecolor='#14142a', edgecolor='#2a2a50', labelcolor='#a78bfa')
+        ax2.set_xlabel('IMDb Rating', color='#6b7194', fontsize=9)
+        ax2.set_ylabel('Movie Count', color='#6b7194', fontsize=9)
+        ax2.tick_params(colors='#9090b8', labelsize=9)
+        ax2.spines[:].set_visible(False)
+        ax2.yaxis.grid(True, color='#1e1e38', linewidth=0.8)
+        ax2.set_axisbelow(True)
+        fig2.tight_layout(pad=1.5)
+
+        st.pyplot(fig2, use_container_width=True)
+        plt.close(fig2)
 
     col_c, col_d = st.columns([3, 2])
 
@@ -917,34 +819,37 @@ with tab_analytics:
                    .agg(count=('title','count'), avg_rating=('vote_average','mean'))
                    .reset_index())
 
-        if not year_df.empty:
-            import plotly.graph_objects as go
-            from plotly.subplots import make_subplots
+        fig3, ax3 = plt.subplots(figsize=(8, 4))
+        ax3b = ax3.twinx()
+        fig3.patch.set_facecolor('#14142a')
+        ax3.set_facecolor('#0f0f1c')
+        ax3b.set_facecolor('#0f0f1c')
 
-            fig3 = make_subplots(specs=[[{"secondary_y": True}]])
-            fig3.add_trace(
-                go.Scatter(x=year_df['year'], y=year_df['count'], fill='tozeroy', 
-                           name='Movies Released', line=dict(color='#7c3aed')),
-                secondary_y=False
-            )
-            fig3.add_trace(
-                go.Scatter(x=year_df['year'], y=year_df['avg_rating'], 
-                           name='Avg Rating', line=dict(color='#f59e0b', dash='dash')),
-                secondary_y=True
-            )
-            fig3.update_layout(
-                template="plotly_dark",
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                margin=dict(l=0, r=0, t=30, b=0),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-            )
-            fig3.update_yaxes(title_text="# of Movies", secondary_y=False)
-            fig3.update_yaxes(title_text="Avg Rating", secondary_y=True)
-            
-            st.plotly_chart(fig3, use_container_width=True)
-        else:
-            st.info("No data available for this filter.")
+        ax3.fill_between(year_df['year'], year_df['count'],
+                         alpha=0.35, color='#7c3aed')
+        ax3.plot(year_df['year'], year_df['count'],
+                 color='#a78bfa', linewidth=2)
+        ax3b.plot(year_df['year'], year_df['avg_rating'],
+                  color='#f59e0b', linewidth=1.8, linestyle='--', marker='o', markersize=3)
+
+        ax3.set_ylabel('# of Movies', color='#a78bfa', fontsize=8)
+        ax3b.set_ylabel('Avg Rating', color='#f59e0b', fontsize=8)
+        ax3.tick_params(colors='#9090b8', labelsize=8)
+        ax3b.tick_params(colors='#9090b8', labelsize=8)
+        ax3.spines[:].set_visible(False)
+        ax3b.spines[:].set_visible(False)
+        ax3.xaxis.grid(True, color='#1e1e38', linewidth=0.6)
+        ax3.yaxis.grid(True, color='#1e1e38', linewidth=0.6)
+        ax3.set_axisbelow(True)
+
+        # Legend
+        p1 = mpatches.Patch(color='#a78bfa', label='Movies Released')
+        p2 = mpatches.Patch(color='#f59e0b', label='Avg Rating')
+        ax3.legend(handles=[p1,p2], fontsize=8, facecolor='#14142a',
+                   edgecolor='#2a2a50', labelcolor='#e0e0f0', loc='upper left')
+        fig3.tight_layout(pad=1.5)
+        st.pyplot(fig3, use_container_width=True)
+        plt.close(fig3)
 
     with col_d:
         st.markdown("""
@@ -954,25 +859,31 @@ with tab_analytics:
         </div>
         """, unsafe_allow_html=True)
 
+        fig4, ax4 = plt.subplots(figsize=(5, 4))
+        fig4.patch.set_facecolor('#14142a')
+        ax4.set_facecolor('#14142a')
+
         pie8 = genre_df.head(8)
-        if not pie8.empty:
-            fig4 = px.pie(
-                pie8, values='Count', names='Genre', hole=0.52,
-                color_discrete_sequence=['#7c3aed','#2563eb','#06b6d4','#10b981',
-                                         '#f59e0b','#ec4899','#6d28d9','#1d4ed8']
-            )
-            fig4.update_traces(textposition='inside', textinfo='percent+label')
-            fig4.update_layout(
-                template="plotly_dark",
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                margin=dict(l=0, r=0, t=30, b=0),
-                showlegend=False,
-                annotations=[dict(text=f'{pie8["Count"].sum():,}<br>films', x=0.5, y=0.5, font_size=14, showarrow=False, font_color='#a78bfa')]
-            )
-            st.plotly_chart(fig4, use_container_width=True)
-        else:
-            st.info("No data available for this filter.")
+        colors_pie = ['#7c3aed','#2563eb','#06b6d4','#10b981',
+                      '#f59e0b','#ec4899','#6d28d9','#1d4ed8']
+        pie_results = ax4.pie( 
+            pie8['Count'], labels=pie8['Genre'].tolist(), autopct='%1.0f%%',
+            colors=colors_pie, startangle=90,
+            wedgeprops=dict(edgecolor='#07070f', linewidth=1.5),
+            pctdistance=0.78, labeldistance=1.1
+        )
+        wedges, texts, autotexts = pie_results # type: ignore
+        for t in texts:     t.set_color('#9090b8');  t.set_fontsize(8)
+        for t in autotexts: t.set_color('#fff');     t.set_fontsize(7.5); t.set_fontweight('bold')
+
+        centre = plt.Circle((0,0), 0.52, fc='#14142a')  # type: ignore
+        ax4.add_patch(centre)
+        ax4.text(0, 0, f'{pie8["Count"].sum():,}\nfilms',
+                 ha='center', va='center', fontsize=9, color='#a78bfa', fontweight='bold')
+
+        fig4.tight_layout()
+        st.pyplot(fig4, use_container_width=True)
+        plt.close(fig4)
 
     st.markdown("""
     <div class="sec-head" style="margin-top:1rem">
@@ -982,10 +893,7 @@ with tab_analytics:
     """, unsafe_allow_html=True)
 
     chart_data = top10_df.set_index('Genre')['Count']
-    if not chart_data.empty:
-        st.bar_chart(chart_data, use_container_width=True, height=320, color="#7c3aed")
-    else:
-        st.info("No data available for this filter.")
+    st.bar_chart(chart_data, use_container_width=True, height=320, color="#7c3aed")
 
     col_e, col_f = st.columns(2)
 
@@ -1000,24 +908,24 @@ with tab_analytics:
         scatter_df = df_raw[['runtime','vote_average','title']].dropna()
         scatter_df = scatter_df[(scatter_df['runtime'] > 40) & (scatter_df['runtime'] < 240)]
 
-        if not scatter_df.empty:
-            fig5 = px.scatter(
-                scatter_df, x='runtime', y='vote_average', color='vote_average',
-                hover_name='title', color_continuous_scale='plasma',
-                opacity=0.7
-            )
-            fig5.update_layout(
-                template="plotly_dark",
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                margin=dict(l=0, r=0, t=30, b=0),
-                xaxis_title="Runtime (min)",
-                yaxis_title="Rating",
-                coloraxis_showscale=True
-            )
-            st.plotly_chart(fig5, use_container_width=True)
-        else:
-            st.info("No data available for this filter.")
+        fig5, ax5 = plt.subplots(figsize=(5.5, 4))
+        fig5.patch.set_facecolor('#14142a')
+        ax5.set_facecolor('#0f0f1c')
+        sc = ax5.scatter(scatter_df['runtime'], scatter_df['vote_average'],
+                         c=scatter_df['vote_average'], cmap='plasma',
+                         alpha=0.5, s=12, linewidths=0)
+        ax5.set_xlabel('Runtime (min)', color='#6b7194', fontsize=9)
+        ax5.set_ylabel('Rating', color='#6b7194', fontsize=9)
+        ax5.tick_params(colors='#9090b8', labelsize=8)
+        ax5.spines[:].set_visible(False)
+        ax5.xaxis.grid(True, color='#1e1e38', linewidth=0.6)
+        ax5.yaxis.grid(True, color='#1e1e38', linewidth=0.6)
+        ax5.set_axisbelow(True)
+        cb = fig5.colorbar(sc, ax=ax5, shrink=0.8)
+        cb.ax.tick_params(colors='#9090b8', labelsize=7)
+        fig5.tight_layout(pad=1.5)
+        st.pyplot(fig5, use_container_width=True)
+        plt.close(fig5)
 
     with col_f:
         st.markdown("""
@@ -1029,68 +937,62 @@ with tab_analytics:
 
         bvr = df_raw[(df_raw['budget']>1e6)&(df_raw['revenue']>1e6)].copy()
 
-        if not bvr.empty:
-            fig6 = px.scatter(
-                bvr, x='budget', y='revenue', color='vote_average',
-                hover_name='title', color_continuous_scale='plasma',
-                log_x=True, log_y=True, opacity=0.7
-            )
-            mn = min(bvr['budget'].min(), bvr['revenue'].min())
-            mx = max(bvr['budget'].max(), bvr['revenue'].max())
-            
-            fig6.add_shape(
-                type="line", x0=mn, y0=mn, x1=mx, y1=mx,
-                line=dict(color="#f59e0b", dash="dash", width=1)
-            )
-            fig6.update_layout(
-                template="plotly_dark",
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                margin=dict(l=0, r=0, t=30, b=0),
-                xaxis_title="Budget ($)",
-                yaxis_title="Revenue ($)"
-            )
-            st.plotly_chart(fig6, use_container_width=True)
-        else:
-            st.info("No data available for this filter.")
+        fig6, ax6 = plt.subplots(figsize=(5.5, 4))
+        fig6.patch.set_facecolor('#14142a')
+        ax6.set_facecolor('#0f0f1c')
+        sc2 = ax6.scatter(bvr['budget'], bvr['revenue'],
+                          c=bvr['vote_average'], cmap='plasma',
+                          alpha=0.5, s=12, linewidths=0)
+        ax6.set_xscale('log'); ax6.set_yscale('log')
+        mn = min(bvr['budget'].min(), bvr['revenue'].min())
+        mx = max(bvr['budget'].max(), bvr['revenue'].max())
+        ax6.plot([mn,mx],[mn,mx], color='#f59e0b', linewidth=1, linestyle='--', alpha=0.5, label='Break-even')
+        ax6.legend(fontsize=7.5, facecolor='#14142a', edgecolor='#2a2a50', labelcolor='#e0e0f0')
+        ax6.set_xlabel('Budget ($)', color='#6b7194', fontsize=9)
+        ax6.set_ylabel('Revenue ($)', color='#6b7194', fontsize=9)
+        ax6.tick_params(colors='#9090b8', labelsize=8)
+        ax6.spines[:].set_visible(False)
+        ax6.xaxis.grid(True, color='#1e1e38', linewidth=0.6)
+        ax6.yaxis.grid(True, color='#1e1e38', linewidth=0.6)
+        ax6.set_axisbelow(True)
+        cb2 = fig6.colorbar(sc2, ax=ax6, shrink=0.8, label='Rating')
+        cb2.ax.tick_params(colors='#9090b8', labelsize=7)
+        fig6.tight_layout(pad=1.5)
+        st.pyplot(fig6, use_container_width=True)
+        plt.close(fig6)
 
     st.markdown("""
     <div class="sec-head" style="margin-top:1rem">
       <div class="sec-head-bar"></div>
-      <div class="sec-head-title">🏆 Top 10 Movies (Based on Filters)</div>
+      <div class="sec-head-title">🏆 Top 15 Highest-Rated Movies (min 500 votes)</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Allow smaller vote counts if the user heavily filtered the data
-    min_votes_required = 500 if len(df_raw) > 500 else 10
-    top10_filtered = (df_raw[df_raw['vote_count'] >= min_votes_required]
-             .nlargest(10, 'vote_average')[['title','vote_average','vote_count','year']]
+    top15 = (df_raw[df_raw['vote_count'] >= 500]
+             .nlargest(15, 'vote_average')[['title','vote_average','vote_count','year']]
              .reset_index(drop=True))
-    top10_filtered.index = top10_filtered.index + 1
-    top10_filtered.columns = ['Title','Rating','Votes','Year']
-    top10_filtered['Year'] = top10_filtered['Year'].astype('Int64')
+    top15.index = top15.index + 1
+    top15.columns = ['Title','Rating','Votes','Year']
+    top15['Year'] = top15['Year'].astype('Int64')
 
     rows_html = ""
-    if top10_filtered.empty:
-        rows_html = '<tr><td colspan="5" style="padding:1rem;text-align:center;color:#6b7194;">No movies match the current filters.</td></tr>'
-    else:
-        for i, row in top10_filtered.iterrows():
-            bar_w = int(row['Rating'] / 10 * 100)
-            rows_html += f"""
-            <tr style="border-bottom:1px solid #1e1e38;">
-              <td style="padding:.55rem .7rem;color:#a78bfa;font-weight:700">{i}</td>
-              <td style="padding:.55rem .7rem;color:#f1f0ff;font-weight:500">{row['Title']}</td>
-              <td style="padding:.55rem .7rem">
-                <div style="display:flex;align-items:center;gap:8px">
-                  <div style="width:80px;background:#1e1e38;border-radius:4px;height:6px;overflow:hidden">
-                    <div style="width:{bar_w}%;background:linear-gradient(90deg,#7c3aed,#06b6d4);height:100%;border-radius:4px"></div>
-                  </div>
-                  <span style="color:#f59e0b;font-weight:700;font-size:.82rem">{row['Rating']}</span>
-                </div>
-              </td>
-              <td style="padding:.55rem .7rem;color:#6b7194;font-size:.82rem">{row['Votes']:,}</td>
-              <td style="padding:.55rem .7rem;color:#6b7194;font-size:.82rem">{row['Year']}</td>
-            </tr>"""
+    for i, row in top15.iterrows():
+        bar_w = int(row['Rating'] / 10 * 100)
+        rows_html += f"""
+        <tr style="border-bottom:1px solid #1e1e38;">
+          <td style="padding:.55rem .7rem;color:#a78bfa;font-weight:700">{i}</td>
+          <td style="padding:.55rem .7rem;color:#f1f0ff;font-weight:500">{row['Title']}</td>
+          <td style="padding:.55rem .7rem">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:80px;background:#1e1e38;border-radius:4px;height:6px;overflow:hidden">
+                <div style="width:{bar_w}%;background:linear-gradient(90deg,#7c3aed,#06b6d4);height:100%;border-radius:4px"></div>
+              </div>
+              <span style="color:#f59e0b;font-weight:700;font-size:.82rem">{row['Rating']}</span>
+            </div>
+          </td>
+          <td style="padding:.55rem .7rem;color:#6b7194;font-size:.82rem">{row['Votes']:,}</td>
+          <td style="padding:.55rem .7rem;color:#6b7194;font-size:.82rem">{row['Year']}</td>
+        </tr>"""
 
     st.markdown(f"""
     <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden">
@@ -1520,6 +1422,26 @@ def recommend(movie, n=10):
 for k, v in [("recs",[]),("searched_for",None), ("logged_in", False), ("users_db", {"admin@cinematrix.com": "password"}), ("search_history", []), ("user_profile", {"name": "", "genres": []}), ("show_account", False)]:
     if k not in st.session_state: st.session_state[k] = v
 
+has_google_creds = os.path.exists('credentials.json')
+
+if has_google_creds:
+    authenticator = Authenticate(
+        secret_credentials_path='credentials.json',
+        cookie_name='cinematrix_cookie',
+        cookie_key='this_is_secret',
+        redirect_uri='http://localhost:8501',
+    )
+
+    try:
+        authenticator.check_authentification()
+    except Exception as e:
+        if hasattr(st, "query_params"):
+            st.query_params.clear()
+        st.error("⚠️ Google Login session expired or failed. Please try logging in again.")
+        
+    if st.session_state.get('connected'):
+        st.session_state.logged_in = True
+
 if not st.session_state.logged_in:
     st.markdown("""
     <div style="text-align:center; padding: 4rem 0;">
@@ -1542,6 +1464,13 @@ if not st.session_state.logged_in:
                     st.rerun()
                 else:
                     st.error("Invalid email or password.")
+            
+            st.markdown("<div style='text-align: center; margin: 1rem 0; color: var(--muted); font-size: 0.85rem;'>OR</div>", unsafe_allow_html=True)
+            
+            if has_google_creds:
+                authenticator.login() # type: ignore
+            else:
+                st.warning("⚠️ Google Sign-In is disabled. Missing 'credentials.json'.")
                 
         with tab_signup:
             new_email = st.text_input("Email", key="signup_email")
@@ -1595,6 +1524,9 @@ with col_logout:
     if st.button("Log Out", use_container_width=True):
         st.session_state.logged_in = False
         st.session_state.connected = False
+        if has_google_creds and 'authenticator' in globals():
+            try: authenticator.logout() # type: ignore
+            except: pass
         st.rerun()
 
 if st.session_state.show_account:
