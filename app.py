@@ -1,10 +1,6 @@
 import os, subprocess, sys, streamlit as st
 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 1 ─ MODEL BOOTSTRAP
-# If the similarity model or movie dictionary hasn't been built yet,
-# run model_builder.py automatically before anything else loads.
-# ─────────────────────────────────────────────────────────────────────────────
 
 if not os.path.exists("models/similarity.pkl") or \
    not os.path.exists("models/movie_dict.pkl"):
@@ -18,10 +14,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 2 ─ GOOGLE OAUTH CONFIGURATION
-# Read OAuth credentials from environment variables (set in .env file).
-# ─────────────────────────────────────────────────────────────────────────────
 
 GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
@@ -31,11 +24,7 @@ GOOGLE_AUTH_URL  = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO  = "https://www.googleapis.com/oauth2/v3/userinfo"
 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 3 ─ CSRF STATE TOKEN HELPERS
-# Generate and verify a time-limited HMAC state token to prevent CSRF attacks
-# during the OAuth redirect flow.
-# ─────────────────────────────────────────────────────────────────────────────
 
 _SIGN_KEY = (GOOGLE_CLIENT_SECRET or "dev-secret").encode("utf-8")
 
@@ -55,11 +44,7 @@ def _verify_state(state: str) -> bool:
     except Exception:
         return False
 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 4 ─ GOOGLE OAUTH URL BUILDER & TOKEN EXCHANGE
-# Build the Google sign-in redirect URL and exchange the returned code
-# for user profile information.
-# ─────────────────────────────────────────────────────────────────────────────
 
 def make_google_auth_url() -> str:
     params = {
@@ -93,10 +78,7 @@ def exchange_code_for_user(code: str):
     except Exception:
         return None
 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 5 ─ STREAMLIT PAGE CONFIG
-# Set the browser tab title, icon, layout mode, and sidebar default state.
-# ─────────────────────────────────────────────────────────────────────────────
 
 st.set_page_config(
     page_title="CineMatrix",
@@ -105,23 +87,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 6 ─ GLOBAL CSS / DESIGN SYSTEM
-# Inject all custom styles via a single <style> block.
-# Organised into sections:
-#   6a. Google Font import (Poppins)
-#   6b. CSS custom properties (design tokens)
-#   6c. Global resets and base styles
-#   6d. Streamlit overrides (app background, containers, scrollbar)
-#   6e. Navbar component
-#   6f. Hero panel component
-#   6g. Input / Select / Button overrides
-#   6h. Tab bar overrides
-#   6i. Section heading component
-#   6j. Movie card component (poster, overlay, hover)
-#   6k. Feature strip component
-#   6l. Site footer
-# ─────────────────────────────────────────────────────────────────────────────
 
 st.markdown("""
 <style>
@@ -244,7 +210,6 @@ section[data-testid="stSidebar"] {
   letter-spacing: 0.08em;
 }
 
-/* ── 6f. Hero Panel ──────────────────────────────────────────────────────── */
 .hero-panel {
   background: linear-gradient(
     135deg,
@@ -308,9 +273,7 @@ section[data-testid="stSidebar"] {
   margin-bottom: 0;
 }
 
-/* ── 6g. Form Controls ───────────────────────────────────────────────────── */
 
-/* Selectbox */
 .stSelectbox > div > div {
   background: rgba(255, 255, 255, 0.04) !important;
   border: 1px solid var(--border2) !important;
@@ -327,7 +290,6 @@ section[data-testid="stSidebar"] {
   letter-spacing: 0.1em;
 }
 
-/* Buttons */
 div.stButton > button,
 div.stFormSubmitButton > button {
   background: linear-gradient(135deg, var(--purple) 0%, var(--blue) 100%) !important;
@@ -350,7 +312,6 @@ div.stFormSubmitButton > button:hover {
   box-shadow: 0 8px 25px rgba(124, 58, 237, 0.55) !important;
 }
 
-/* ── 6h. Tab Bar ─────────────────────────────────────────────────────────── */
 .stTabs [data-baseweb="tab-list"] {
   background: var(--surface) !important;
   border-radius: 12px !important;
@@ -382,7 +343,6 @@ div.stFormSubmitButton > button:hover {
 /* Horizontal rule */
 hr { border-color: var(--border) !important; }
 
-/* ── 6i. Section Heading ─────────────────────────────────────────────────── */
 .sec-head {
   display: flex;
   align-items: center;
@@ -415,7 +375,6 @@ hr { border-color: var(--border) !important; }
   padding: 2px 10px;
 }
 
-/* ── 6j. Movie Card ──────────────────────────────────────────────────────── */
 .mc {
   background: var(--card);
   border: 1px solid var(--border);
@@ -510,7 +469,6 @@ hr { border-color: var(--border) !important; }
   letter-spacing: 0.05em;
 }
 
-/* ── 6k. Feature Strip (selected movie context banner) ───────────────────── */
 .feature-strip {
   background: linear-gradient(135deg, var(--card) 0%, rgba(124, 58, 237, 0.08) 100%);
   border: 1px solid var(--border2);
@@ -541,7 +499,6 @@ hr { border-color: var(--border) !important; }
 .feature-strip-text   { font-size: 0.9rem; color: var(--muted); }
 .feature-strip-text b { color: var(--text); }
 
-/* ── 6l. Site Footer ─────────────────────────────────────────────────────── */
 .site-footer {
   text-align: center;
   color: var(--muted);
@@ -579,20 +536,15 @@ TMDB_KEY    = os.environ.get("TMDB_API_KEY", "")
 POSTER_BASE = "https://image.tmdb.org/t/p/w500"
 NO_POSTER   = "https://via.placeholder.com/300x450/14142a/7c3aed?text=No+Image"
 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 8 ─ SAFETY GUARD
-# If models are still missing after the bootstrap step, halt with a helpful
-# error message instead of crashing silently.
-# ─────────────────────────────────────────────────────────────────────────────
+
 
 if not os.path.exists(MOVIE_DICT_PATH) or not os.path.exists(SIMILARITY_PATH):
     st.error("⚠️  Run `python model_builder.py` first.")
     st.stop()
 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 9 ─ LOAD ML MODEL (cached)
-# Load the movie DataFrame and cosine-similarity matrix once per session.
-# ─────────────────────────────────────────────────────────────────────────────
+
 
 @st.cache_resource
 def load_model():  # type: ignore
@@ -602,20 +554,16 @@ def load_model():  # type: ignore
 
 movies, similarity = load_model()
 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 10 ─ POSTER CACHE
-# Load a local disk cache of TMDB poster URLs to avoid redundant API calls.
-# ─────────────────────────────────────────────────────────────────────────────
+
 
 _pc: dict = {}
 if os.path.exists(POSTER_CACHE_PATH):
     try:    _pc = pickle.load(open(POSTER_CACHE_PATH, "rb"))
     except: pass
 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 11 ─ POSTER FETCHER
-# Retrieve a movie poster URL from cache or TMDB API, then persist to disk.
-# ─────────────────────────────────────────────────────────────────────────────
+
 
 def get_poster(movie_id: int) -> str:  # type: ignore
     cached = _pc.get(movie_id)
@@ -631,12 +579,6 @@ def get_poster(movie_id: int) -> str:  # type: ignore
     try: pickle.dump(_pc, open(POSTER_CACHE_PATH, "wb"))
     except: pass
     return url
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 12 ─ LOCAL MOVIE METADATA LOOKUP (cached)
-# Merge movies + credits CSVs once and build a dict keyed by movie_id for
-# fast O(1) metadata access (rating, cast, genres, overview, etc.).
-# ─────────────────────────────────────────────────────────────────────────────
 
 @st.cache_resource
 def build_lookup():  # type: ignore
@@ -672,11 +614,7 @@ def build_lookup():  # type: ignore
 
 local_lookup = build_lookup()  # type: ignore
 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 13 ─ HELPER: GET MOVIE DETAILS
-# Retrieve enriched metadata for a given movie_id; fall back to a safe
-# default dict if the id is not in the local lookup.
-# ─────────────────────────────────────────────────────────────────────────────
 
 def get_details(movie_id, fallback=""):  # type: ignore
     d = local_lookup.get(int(movie_id))
@@ -685,11 +623,7 @@ def get_details(movie_id, fallback=""):  # type: ignore
             "overview": "No description.", "genres": [], "directors": [], "cast": [],
             "runtime": 0, "tagline": "", "vote_count": 0}
 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 14 ─ RECOMMENDATION ENGINE
-# Given a movie title, find the top-N most similar movies using the
-# pre-computed cosine-similarity matrix.
-# ─────────────────────────────────────────────────────────────────────────────
 
 def recommend(movie, n=10):  # type: ignore
     idx    = movies[movies["title"] == movie].index[0]
@@ -699,10 +633,7 @@ def recommend(movie, n=10):  # type: ignore
     return [{"title": movies.iloc[i]["title"], "movie_id": int(movies.iloc[i]["movie_id"])}
             for i, _ in top]
 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 15 ─ SESSION STATE INITIALISATION
-# Initialise all session-state keys with safe defaults on first run.
-# ─────────────────────────────────────────────────────────────────────────────
 
 for k, v in [
     ("recs", []),
@@ -716,11 +647,7 @@ for k, v in [
     if k not in st.session_state:
         st.session_state[k] = v
 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 16 ─ GOOGLE OAUTH CALLBACK HANDLER
-# When Google redirects back with ?code=…&state=…, validate the state token,
-# exchange the code for user info, and mark the session as logged in.
-# ─────────────────────────────────────────────────────────────────────────────
 
 if not st.session_state.logged_in:
     _code  = st.query_params.get("code",  None)
@@ -744,15 +671,7 @@ if not st.session_state.logged_in:
         else:
             st.error("Sign-in link expired. Please click 'Continue with Google' again.")
 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 17 ─ LOGIN / SIGN-UP PAGE
-# Shown only when the user is not authenticated.
-# Contains:
-#   • Welcome hero section
-#   • "Continue with Google" OAuth button (if credentials are configured)
-#   • Email / password login form
-#   • New account registration form
-# ─────────────────────────────────────────────────────────────────────────────
 
 if not st.session_state.logged_in:
     st.markdown("""
@@ -765,7 +684,6 @@ if not st.session_state.logged_in:
 
     col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
-        # ── Google OAuth button (only rendered when credentials are present) ──
         if GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET:
             google_url = make_google_auth_url()
             st.markdown(f"""
@@ -826,11 +744,7 @@ if not st.session_state.logged_in:
                     st.success("✅ Account created! You can now log in.")
     st.stop()
 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 18 ─ TOP NAVIGATION BAR
-# Rendered for authenticated users. Displays the brand logo, movie count,
-# and "ML Powered" badge on the right-hand side.
-# ─────────────────────────────────────────────────────────────────────────────
 
 st.markdown(f"""
 <div class="navbar">
@@ -896,18 +810,11 @@ if st.session_state.show_account:
                 st.info("No searches yet.")
     st.markdown("<br>", unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 21 ─ MAIN TABS
-# Two primary views:
-#   • 🎬 Recommended — movie search + recommendation grid
-#   • 📊 Analytics   — dataset charts and statistics
-# ─────────────────────────────────────────────────────────────────────────────
 
 tab_home, tab_analytics = st.tabs(["🎬 Recommended", "📊 Analytics & Charts"])
 
-# ─────────────────────────────────────────────────────────────────────────────
 # TAB A ─ RECOMMENDATIONS
-# ─────────────────────────────────────────────────────────────────────────────
 
 with tab_home:
 
@@ -1003,11 +910,7 @@ with tab_home:
         st.markdown("<div style='margin-top:2rem'></div>", unsafe_allow_html=True)
         render_row(st.session_state.recs[5:], "More You Might Like", "6–10 of 10", "r2")
 
-# ─────────────────────────────────────────────────────────────────────────────
 # TAB B ─ ANALYTICS & CHARTS
-# Visualises the full TMDB 5,000 dataset with interactive Plotly charts.
-# Includes filterable KPI cards and six chart panels.
-# ─────────────────────────────────────────────────────────────────────────────
 
 with tab_analytics:
     import plotly.express as px
@@ -1022,7 +925,6 @@ with tab_analytics:
         unsafe_allow_html=True
     )
 
-    # ── Load raw CSV data (cached) ────────────────────────────────────────────
     @st.cache_data
     def load_raw():
         df = pd.read_csv(MOVIES_CSV)
@@ -1033,7 +935,6 @@ with tab_analytics:
 
     df_full = load_raw()
 
-    # ── Interactive filter controls ───────────────────────────────────────────
     fc1, fc2 = st.columns(2)
     with fc1: rr = st.slider("⭐ IMDb Rating Range", 0.0, 10.0, (0.0, 10.0), 0.5)
     with fc2:
@@ -1047,7 +948,6 @@ with tab_analytics:
         (df_full["year"] <= yr[1])
     ]
 
-    # ── KPI metric cards ──────────────────────────────────────────────────────
     k1, k2, k3, k4, k5 = st.columns(5)
     ks = "background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:.9rem 1rem;text-align:center"
     kv = "font-size:1.6rem;font-weight:800;color:var(--purple);font-family:'Poppins',sans-serif"
@@ -1061,7 +961,6 @@ with tab_analytics:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── Genre aggregation helper ──────────────────────────────────────────────
     def genre_counts(dataframe):
         gc = {}
         for raw in dataframe["genres"].dropna():
@@ -1217,8 +1116,7 @@ with tab_analytics:
 
 st.markdown(
     '<div class="site-footer">'
-    '<span>CineMatrix</span> &nbsp;·&nbsp; Powered by TMDB &nbsp;·&nbsp;'
-    ' Built with Streamlit &amp; Python &nbsp;·&nbsp; © 2025'
+    '<span>CineMatrix</span> &nbsp;·&nbsp; Thank You For Visiting
     '</div>',
     unsafe_allow_html=True
 )
