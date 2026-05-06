@@ -2120,7 +2120,6 @@ with tab_analytics:
 
 st.markdown("""
 <div class="site-footer">
-  <span>CineMatrix</span> &nbsp;·&nbsp; Powered by TMDB &nbsp;·&nbsp;
-  Built with Streamlit &amp; Python &nbsp;·&nbsp; © 2025
+  <span>CineMatrix</span> &nbsp;·&nbsp;Thanks For Visiting 
 </div>
 """, unsafe_allow_html=True)
