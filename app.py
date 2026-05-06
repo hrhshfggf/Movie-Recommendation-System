@@ -1,4 +1,4 @@
-import os, subprocess, sys, streamlit as st
+mport os, subprocess, sys, streamlit as st
 
 if not os.path.exists("models/similarity.pkl") or \
    not os.path.exists("models/movie_dict.pkl"):
@@ -1099,4 +1099,4 @@ st.markdown("""
 <div class="site-footer">
   <span>CineMatrix</span> &nbsp;·&nbsp;Thank You for Visiting
 </div>
-""", unsafe_al
+""", unsafe_allow_html=True)
