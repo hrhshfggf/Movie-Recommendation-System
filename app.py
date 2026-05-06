@@ -1116,7 +1116,7 @@ with tab_analytics:
 
 st.markdown(
     '<div class="site-footer">'
-    '<span>CineMatrix</span> &nbsp;·&nbsp; Thank You  For Visiting;
+    '<span>CineMatrix</span> &nbsp;·&nbsp; Powered by TMDB &nbsp;
     '</div>',
     unsafe_allow_html=True
 )
